@@ -5,10 +5,33 @@
 -- @brief Implements a sensor node using CoAP. Both a server and a client.
 --
 
--- First check if the CoAP module is available.
-if type(coap) ~= 'romtable' then
-  print('CoAP module is missing.')
-  return nil
+local function check_module(modname, module)
+  if type(module) ~= 'romtable' then
+    print(string.format('%s module is missing.', modname))
+    return nil
+  end
+end
+
+-- Check if the CoAP module is available.
+check_module('CoAP', coap)
+-- Check CJSON module is available.
+check_module('CJSON', cjson)
+
+-- Local definitions.
+local coap = coap
+local cjson = cjson
+local find = string.find
+local format = string.format
+local upper = string.upper
+local print = print
+local setmetatable = setmetable
+
+-- Avoid polluting the global environment.
+-- If we are in Lua 5.1 this function exists.
+if _G.setfenv then
+  setfenv(1, {})
+else -- Lua 5.2.
+  _ENV = nil
 end
 
 -- @table: the module table.
@@ -21,6 +44,7 @@ local M  = {
   _REQ_TYPE = coap.CON, -- by default use a confirmable request
   _METHOD = 'GET', -- default METHOD
   _SECURE = false -- default is normal CoAP (coap scheme in URLs)
+  _CONTENT_TYPE = coap.JSON -- default Content Type for server
   _COPYRIGHT = [[
                   Copyright (c) António P. P. Almeida <appa@perusio.net>,
                   relayr GmbH
@@ -48,21 +72,6 @@ local M  = {
 
 local mt = { __index = M }
 
--- Local definitions.
-local coap = coap
-local find = string.find
-local format = string.format
-local upper = string.upper
-local print = print
-local setmetatable = setmetable
-
--- Avoid polluting the global environment.
--- If we are in Lua 5.1 this function exists.
-if _G.setfenv then
-  setfenv(1, {})
-else -- Lua 5.2.
-  _ENV = nil
-end
 
 -- Allowed CoAP methods.
 local allowed_methods = '/GET/POST/PUT/DELETE/'
@@ -88,18 +97,20 @@ local function check_address(address)
 end
 
 
-function M.new(self, address, port, req_type, is_secure, payload)
+function M.req(self, address, port, req_type, is_secure, payload)
 
-  local settings = {
+  -- Set the client settings.
+  local client = {
     -- Check the request type.
     req_t = req_type and check_request_type(req_type) or M._CONN,
     -- Check the port number.
     p = port and type(port) == 'number' or M._PORT,
-    -- Check the address
+    -- Check the address.
     addr = address and check_address(address),
   }
 
-
-  return client(get_url(addr, p, is_secure ))
+  -- Instantiate the client.
+  client.cc = coap.Client()
+  return setmetatable(client, mt)
 
 end
