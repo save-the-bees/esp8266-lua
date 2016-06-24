@@ -46,6 +46,7 @@ local M  = {
                   OTHER DEALINGS IN THE SOFTWARE. ]],
 }
 
+local mt = { __index = M }
 
 -- Local definitions.
 local coap = coap
@@ -53,6 +54,7 @@ local find = string.find
 local format = string.format
 local upper = string.upper
 local print = print
+local setmetatable = setmetable
 
 -- Avoid polluting the global environment.
 -- If we are in Lua 5.1 this function exists.
@@ -80,15 +82,24 @@ local function get_url(address, port, is_secure)
 end
 
 
-function M.client(address, port, req_type, method, is_secure, payload)
-  -- Check the request type.
-  local req_t = req_type and check_request_type(req_type) or M._CONN
-  -- Check the method.
-  local m = method and check_method(method) or M._METHOD
-  -- Check the port number.
-  local p = port and type(port) == 'number' or M._PORT
-  -- Check the address
+local function check_address(address)
+  -- Is either an IPv4 IP address or a domain address.
+  return find('%d+.%d+.%d+.%d+', address) ~= nil or find('[%a.-_]', address) ~= nil
+end
 
-  return coap.Client(format())
+
+function M.new(self, address, port, req_type, is_secure, payload)
+
+  local settings = {
+    -- Check the request type.
+    req_t = req_type and check_request_type(req_type) or M._CONN,
+    -- Check the port number.
+    p = port and type(port) == 'number' or M._PORT,
+    -- Check the address
+    addr = address and check_address(address),
+  }
+
+
+  return client(get_url(addr, p, is_secure ))
 
 end
