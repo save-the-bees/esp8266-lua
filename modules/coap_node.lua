@@ -189,8 +189,8 @@ function M.request(self, uri, method, payload)
   return self.c[lower(client_method)](self.c,
                                       self.req_type,
                                       get_url(self.address,
-                                              uri,
                                               self.port,
+                                              uri,
                                               self.is_secure),
                                       payload)
 end
