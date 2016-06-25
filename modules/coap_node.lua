@@ -118,9 +118,9 @@ end
 -- @return string
 --   The URL.
 local function get_url(address, port, uri, is_secure)
-  return format('%s://%s%s:%s',
+  return format('%s://%s:%s%s',
                 is_secure and 'coaps' or 'coap',
-                address, uri, port)
+                address, port, uri)
 end
 
 --- Checks if the address given is admissible. Either an
