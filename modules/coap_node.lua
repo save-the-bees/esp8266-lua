@@ -5,6 +5,13 @@
 -- @brief Implements a sensor node using CoAP. Both a server and a client.
 --
 
+--- Check if an NodeMCU SDK Lua module is available.
+--
+-- @param modname string module name
+-- @param module table module
+--
+-- @return void or nil
+--   If module isn's available return nil.
 local function check_module(modname, module)
   if type(module) ~= 'romtable' then
     print(string.format('%s module is missing.', modname))
@@ -14,17 +21,16 @@ end
 
 -- Check if the CoAP module is available.
 check_module('CoAP', coap)
--- Check CJSON module is available.
-check_module('CJSON', cjson)
 
 -- Local definitions.
 local coap = coap
-local cjson = cjson
 local find = string.find
 local format = string.format
 local upper = string.upper
+local lower = string.lower
 local print = print
-local setmetatable = setmetable
+local setmetatable = setmetatable
+local type = type
 
 -- Avoid polluting the global environment.
 -- If we are in Lua 5.1 this function exists.
@@ -44,8 +50,9 @@ local M  = {
   _SECURE_PORT = 5684, -- CoAP + DTLS (coaps) default port number
   _REQ_TYPE = coap.CON, -- by default use a confirmable request
   _METHOD = 'GET', -- default METHOD
-  _SECURE = false -- default is normal CoAP (coap scheme in URLs)
-  _CONTENT_TYPE = coap.JSON -- default Content Type for server
+  _SECURE = false, -- default is normal CoAP (coap scheme in URLs)
+  _ADDRESS = '127.0.0.1', -- localhost as the default address
+  _CONTENT_TYPE = coap.JSON, -- default Content Type for server
   _COPYRIGHT = [[
                   Copyright (c) António P. P. Almeida <appa@perusio.net>,
                   relayr GmbH
@@ -82,8 +89,7 @@ local allowed_methods ={
 --- Checks the request type. Only CONfirmable or NON-confirmable
 --  requests are allowed.
 --
--- @param number req_type
---   The type of request: confirmable or non-confirmable.
+-- @param req_type number request type: CONfirmable or NON-confirmable.
 -- @return boolean
 --   true if request is CONfirmable or NON-confirmable.
 --   false otherwise.
@@ -95,75 +101,116 @@ end
 
 --- Checks the CoAP method for the client
 --
--- @param string method
---   CoAP method name.
--- @param string allowed
---   Allowed methods as a string.
+-- @param method string CoAP method name.
+-- @param allowed string allowed methods as a string.
+--
 -- @return boolean
 --   true if method is allowed, false if not.
 local function check_method(method, allowed)
-  return find(allowed, format('/%s/', upper(method))) ~= nil
+  return find(format('/%s/', upper(method)), allowed) ~= nil
 end
 
 --- Builds a CoAP URL.
 --
--- @param string address
---   Can be an IPv4 address or a domain name.
--- @param number port
---   port number for the server to be queried.
--- @param boolean is_secure
---   true if scheme is coaps (CoAP + DTLS).
+-- @param address string IPv4 address or a domain name.
+-- @param port number port for the server to be queried.
+-- @param is_secure boolean true if scheme is coaps (CoAP + DTLS).
 -- @return string
 --   The URL.
-local function get_url(address, port, is_secure)
-  return format('%s://%s:%s',
+local function get_url(address, port, uri, is_secure)
+  return format('%s://%s%s:%s',
                 is_secure and 'coaps' or 'coap',
-                address, port)
+                address, uri, port)
 end
 
 --- Checks if the address given is admissible. Either an
 --  IPv4 or a domain name.
 --
--- @param string address
---   IPv4 address or domain name.
--- @return boolean
---   true if address is valid. false if not.
+-- @param address string IPv4 address or domain name.
+-- @return string or false
+--    string if address is valid. false if not.
 local function check_address(address)
   -- Is either an IPv4 IP address or a domain address.
-  return find('%d+.%d+.%d+.%d+', address) ~= nil or find('[%a.-_]', address) ~= nil
+  return
+    find(address, '%d+%.%d+%.%d+%.%d+') ~= nil
+    or
+    find(address, '[%a%.%-_]') ~= nil
+    and address
 end
 
 --- Instantiates a CoAP client.
 --
--- @param table self
---   client object.
--- @param string address
---   IPv4 address or dimain name.
--- @param number port.
---   port number.
--- @param string req_type
---   CONfirmable or NON-confirmable requests.
--- @param is_secure
---   true if scheme is coaps, false if not.
--- @param string payload
---   The payload in serialized form. Makes
---   sense only for POST and PUT.
+-- @param self table client object.
+-- @param params table client parameters.
+--
 -- @return table
 --   The CoAP client object.
-function M.req(self, address, port, req_type, is_secure, payload)
-
-  -- Set the client settings.
+function M.new_client(self, params)
+  -- The client settings.
   local client = {
     -- Check the request type.
-    req_t = req_type and check_request_type(req_type) or M._CONN,
+    req_type = M._REQ_TYPE,
     -- Check the port number.
-    p = port and type(port) == 'number' or (is_secure and M._SECURE_PORT or M._PORT) ,
+    port = M._PORT,
     -- Check the address.
-    addr = address and check_address(address),
+    address = M._ADDRESS,
+    -- No coaps by default.
+    is_secure = M._SECURE,
   }
+  -- Loop over all parameters.
+  if params and type(params) == 'table' then
+    for key, value in pairs(params) do
+      if params[key] ~= nil then
+        client[key] = params[key]
+      end
+    end
+  end
   -- Instantiate the client.
-  client.cc = coap.Client()
+  client.c = coap.Client()
   return setmetatable(client, mt)
+end
+
+--- Makes a CoAP request to a given URI.
+--
+-- @param self table client object.
+-- @param uri string URI to request.
+-- @param method string CoAP method.
+-- @param payload string The payload in serialized form (POST + PUT).
+--
+-- @return string
+--   Response (serialized).
+function M.request(self, uri, method, payload)
+  -- Check the method.
+  local client_method = method
+    and check_method(method, allowed_methods.client)
+    or M._METHOD
+
+  -- Perform the request.
+  return self.c[lower(client_method)](self.c,
+                                      self.req_type,
+                                      get_url(self.address,
+                                              uri,
+                                              self.port,
+                                              self.is_secure),
+                                      payload)
+end
+
+--- Instantiates a CoAP server.
+--
+-- @param self table server object.
+-- @param port number port number.
+-- @param is_secure boolean true if the scheme is coaps.
+-- @return table
+--   The server object.
+function M.new_server(self, port, is_secure)
+  local server = {
+    -- Check the port number.
+    p = port and type(port) == 'number' or (is_secure and M._SECURE_PORT or M._PORT),
+  }
+  -- Instantiate the server.
+  server.s = coap.Server()
+  server.s:listen(server.p)
+  return setmetatable(server, mt)
 end
 
 -- Return the module table.
