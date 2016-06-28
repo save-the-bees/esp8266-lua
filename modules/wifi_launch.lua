@@ -39,7 +39,7 @@ local M = {
 }
 
 -- Some local useful definitions.
-local wifi = wifi
+local w = wifi
 local format = string.format
 local print = print
 local pairs = pairs
@@ -65,9 +65,32 @@ local function wifi_setup(t)
     for key, value in pairs(t) do
       -- Connect if the network defined on the configuration file.
       if M._CONFIG.ssid == key then
-        wifi.setmode(wifi.STATION);
-        wifi.sta.config(key, M._CONFIG.psk)
-        wifi.sta.connect()
+        w.setmode(w.STATION);
+        w.sta.config(key, M._CONFIG.psk)
+        w.sta.connect()
+        -- Set the WiFi physical mode.
+        local mode = w.getphymode()
+        if M._CONFIG.phymode and M._CONFIG.phymode ~= mode then
+          -- Mapping the configured physical modes to simpler keys.
+          local modes = {
+            -- Low power here means 56mA RX, 120mA TX.
+            -- http://nodemcu.readthedocs.io/en/dev/en/modules/wifi/#wifisetphymode
+            b = w.PHYMODE_B, -- long range, low rate, high power
+            g = w.PHYMODE_G, -- medium range, medium rate, medium power
+            n = w.PHYMODE_N, -- low range, high rate, low power
+          }
+          w.setphymode(modes[M._CONFIG.phymode])
+        end
+        -- Set the IP address: use a fixed one instead of relying on DHCP.
+        if M._CONFIG.ip then
+          w.sta.setip(
+            {
+              ip = M._CONFIG.ip, -- IP address
+              netmask = M._CONFIG.mask, -- netmask
+              gateway = M._CONFIG.gw, -- gateway
+            }
+          )
+        end
         print(format('Connecting to %s...', key))
       end
     end
@@ -82,12 +105,12 @@ end
 --   Side effects only.
 function M.start(config)
   -- (Re)set the WiFi mode in the chip just to be on the safe side.
-  wifi.setmode(wifi.NULLMODE)
-  wifi.setmode(wifi.STATION)
+  w.setmode(w.NULLMODE)
+  w.setmode(w.STATION)
   -- Copy the configuration to the module table.
   M._CONFIG = config
   -- Scan the to list the available networks for WiFi connection.
-  wifi.sta.getap(wifi_setup)
+  w.sta.getap(wifi_setup)
 end
 
 -- WiFi configuration timer period in ms.
