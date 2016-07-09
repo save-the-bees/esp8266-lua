@@ -54,7 +54,7 @@ local M  = {
   _ADDRESS = '127.0.0.1', -- localhost as the default address
   _CONTENT_TYPE = coap.JSON, -- default Content Type for server
   _COPYRIGHT = [[
-                  Copyright (c) António P. P. Almeida <appa@perusio.net>,
+                  Copyright 2016 (c) António P. P. Almeida <appa@perusio.net>,
                   relayr GmbH
 
                   Permission is hereby granted, free of charge, to any person
@@ -203,6 +203,7 @@ end
 -- @return table
 --   The server object.
 function M.new_server(self, port, is_secure)
+
   local server = {
     -- Check the port number.
     p = port and type(port) == 'number' or (is_secure and M._SECURE_PORT or M._PORT),
